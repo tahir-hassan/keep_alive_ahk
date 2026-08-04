@@ -25,11 +25,13 @@ CapsLock & k:: Send("{Up}")
 }
 
 CapsLock & Space:: {
+	A_Clipboard := ""
+	Sleep 50
 	Send "{RCtrl Down}{Up Down}"
 	KeyWait "Space"
 	KeyWait "CapsLock"
 	Send "{Up Up}{RCtrl Up}"
+	ClipWait
 	A_Clipboard := ".." . A_Clipboard
-	Sleep 50
 	Send "^v"
 }
