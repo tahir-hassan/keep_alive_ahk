@@ -32,6 +32,6 @@ CapsLock & Space:: {
 	KeyWait "CapsLock"
 	Send "{Up Up}{RCtrl Up}"
 	ClipWait
-	A_Clipboard := ".." . A_Clipboard
+	A_Clipboard := "7" . A_Clipboard
 	Send "^v"
 }
