@@ -238,47 +238,6 @@ class SentenceState {
 	}
 }
 
-class OutsidePunctuationHandler {
-	static Bound := Array()
-	static IsTesting := false
-
-	static Bind() {
-		for _, c in StrSplit(PunctuationChars.EndPunctuationCharacters) {
-			Hotkey ("~" . c), this.OnEndPunctuationCharacter.Bind(this), "Off"
-			this.Bound.Push(("~" . c))
-		}
-
-		for _, c in StrSplit(PunctuationChars.NonEndPunctuationCharacters) {
-			Hotkey ("~" . c), this.OnNonEndPunctuationCharacter.Bind(this), "Off"
-			this.Bound.Push(("~" . c))
-		}
-	}
-
-	static _SetHotKeysOption(opt) {
-		for bound in this.Bound {
-			Hotkey bound, , opt
-		}
-	}
-
-	static On() {
-		this._SetHotKeysOption("On")
-	}
-
-	static Off() {
-		this._SetHotKeysOption("Off")
-	}
-
-	static OnEndPunctuationCharacter(ThisHotkey) {
-		if this.IsTesting && ThisHotkey = "~!" {
-			MsgBox ("TESTING: " . ThisHotkey)
-		}
-		SentenceState.SetSentenceEnded(true)
-	}
-
-	static OnNonEndPunctuationCharacter(ThisHotkey) {
-		SentenceState.SetSentenceEnded(false)
-	}
-}
 
 ;; This class should not in any way depend on the sentence state class
 class TranscribedText {
@@ -372,40 +331,100 @@ class TranscribedText {
 	}
 }
 
+class OutsidePunctuationHandler {
+	static Bound := Array()
+	static IsTesting := false
+
+	static Bind() {
+		for _, c in StrSplit(PunctuationChars.EndPunctuationCharacters) {
+			Hotkey ("~" . c), this.OnEndPunctuationCharacter.Bind(this), "Off"
+			this.Bound.Push(("~" . c))
+		}
+
+		for _, c in StrSplit(PunctuationChars.NonEndPunctuationCharacters) {
+			Hotkey ("~" . c), this.OnNonEndPunctuationCharacter.Bind(this), "Off"
+			this.Bound.Push(("~" . c))
+		}
+	}
+
+	static _SetHotKeysOption(opt) {
+		for bound in this.Bound {
+			Hotkey bound, , opt
+		}
+	}
+
+	static On() {
+		this._SetHotKeysOption("On")
+	}
+
+	static Off() {
+		this._SetHotKeysOption("Off")
+	}
+
+	static OnEndPunctuationCharacter(ThisHotkey) {
+		if this.IsTesting && ThisHotkey = "~!" {
+			MsgBox ("TESTING: " . ThisHotkey)
+		}
+		SentenceState.SetSentenceEnded(true)
+	}
+
+	static OnNonEndPunctuationCharacter(ThisHotkey) {
+		SentenceState.SetSentenceEnded(false)
+	}
+}
+
+class VolumeTool {
+	reducedVolume := -1
+	originalVolume := -1
+
+	ReduceVolume() {
+		this.originalVolume := SoundGetVolume()
+		this.reducedVolume := this.originalVolume / 4
+		SoundSetVolume(this.reducedVolume)
+	}
+
+	RestoreVolume() {
+		if this.originalVolume != -1 {
+			SoundSetVolume(this.originalVolume)
+			this.reducedVolume := -1
+			this.originalVolume := -1
+		}
+	}
+}
 
 class Dandy {
-	static IsRecording := false
-	static IsPaused := false
-	static IsFormatting := false
-	static IsStoppingOrStarting := false
-	static CurrentlyTranscribedText := TranscribedText()
-	static Hook := DandyHook()
-	static Log := Array()
-	static FormatMenuItems := [
+	IsRecording := false
+	IsPaused := false
+	IsFormatting := false
+	IsStoppingOrStarting := false
+	CurrentlyTranscribedText := TranscribedText()
+	volTool := VolumeTool()
+	Log := Array()
+	FormatMenuItems := [
 		"<ESC> - go back",
 		"c - camelCase paste",
 		"p - PascalCase paste",
 		"- - dash and lowercase paste",
 	]
-	static PauseMenuItems := [
+	PauseMenuItems := [
 		"<SPC> - resume",
 		". ? - end sentence",
 		", - comma",
 		"u - change case",
 		"f - format menu"
 	]
-	static RecordingMenuItems := [
+	RecordingMenuItems := [
 		"<SPC> - pause",
 		". ? - end sentence, pause",
 		", - comma, pause",
 		"f - format menu",
 	]
 
-	static InvokeHandyCli(argument) {
+	InvokeHandyCli(argument) {
 		RunWait 'C:\Users\tahir\AppData\Local\Handy\handy.exe ' . argument
 	}
 
-	static StartHandy() {
+	StartHandy() {
 		CB.Clear()
 		this.IsStoppingOrStarting := true
 		this.InvokeHandyCli(HandyCliArgs.Cancel)
@@ -413,11 +432,11 @@ class Dandy {
 		this.InvokeHandyCli(HandyCliArgs.ToggleTranscription)
 	}
 
-	static _joinNl(arr) {
+	_joinNl(arr) {
 		return StringUtils.JoinArray(arr, "`n")
 	}
 
-	static _joinNlNl(arr) {
+	_joinNlNl(arr) {
 		return StringUtils.JoinArray(arr, "`n`n")
 	}
 
@@ -425,7 +444,7 @@ class Dandy {
 		this.Log.Push(text)
 	}
 
-	static GetMenuItemsForState() {
+	GetMenuItemsForState() {
 		if this.IsFormatting {
 			return this.FormatMenuItems
 		} else if this.IsPaused {
@@ -437,7 +456,7 @@ class Dandy {
 		}
 	}
 
-	static SetMenuState() {
+	SetMenuState() {
 		if (this.IsPaused || this.IsRecording || this.IsFormatting) {
 			tooltipTextArr := Array()
 
@@ -464,7 +483,7 @@ class Dandy {
 		}
 	}
 
-	static Recording_Paused_Formatting_StoppingStarting(rec, pau, formatting, ing) {
+	Recording_Paused_Formatting_StoppingStarting(rec, pau, formatting, ing) {
 		this.IsRecording := rec
 		this.IsPaused := pau
 		this.IsFormatting := formatting
@@ -473,12 +492,13 @@ class Dandy {
 		this.SetMenuState()
 	}
 
-	static StartTranscription() {
+	StartTranscription() {
 		if (!this.IsRecording && !this.IsPaused) {
 			try {
 				this.Log := Array()
 				this.CurrentlyTranscribedText := TranscribedText()
-				this.Hook := DandyHook()
+				this.volTool.ReduceVolume()
+				this.Hook := DandyHook(this)
 				this.StartHandy()
 				this.Hook.Start()
 			} finally {
@@ -487,18 +507,18 @@ class Dandy {
 		}
 	}
 
-	static EndHandyTranscription() {
+	EndHandyTranscription() {
 		this.IsStoppingOrStarting := true
 		this.InvokeHandyCli(HandyCliArgs.ToggleTranscription)
 		handyResult := CB.WaitGet()
 		return handyResult
 	}
 
-	static ShowFormatMenu() {
+	ShowFormatMenu() {
 		this.Recording_Paused_Formatting_StoppingStarting(false, true, true, false)
 	}
 
-	static PauseTranscription() {
+	PauseTranscription() {
 		if (this.IsRecording) {
 			try {
 				handyResult := this.EndHandyTranscription()
@@ -509,7 +529,7 @@ class Dandy {
 		}
 	}
 
-	static ResumeTranscription() {
+	ResumeTranscription() {
 		if (this.IsPaused) {
 			try {
 				this.StartHandy()
@@ -519,15 +539,15 @@ class Dandy {
 		}
 	}
 
-	static IsPostPauseActionChar(character) {
+	IsPostPauseActionChar(character) {
 		return StrEq(character, "u")
 	}
 
-	static IsFormattingRequestChar(character) {
+	IsFormattingRequestChar(character) {
 		return StrEq(character, "f")
 	}
 
-	static _StopTranscription(copyToClipboard) {
+	_StopTranscription(copyToClipboard) {
 		if (this.IsRecording || this.IsPaused) {
 			try {
 				if (this.IsRecording) {
@@ -542,19 +562,20 @@ class Dandy {
 					SentenceState.SetSentenceEnded(this.CurrentlyTranscribedText.LastEnds())
 				}
 			} finally {
+				this.volTool.RestoreVolume()
 				this.Hook.Stop()
 				this.Recording_Paused_Formatting_StoppingStarting(false, false, false, false)
 			}
 		}
 	}
 
-	static FormatTranscription(character) {
+	FormatTranscription(character) {
 		this.CurrentlyTranscribedText.FormatLast(character)
 		this._StopTranscription(true)
 	}
 
 
-	static CharacterAction(character) {
+	CharacterAction(character) {
 		if (character = ' ') {
 			if (this.IsRecording) {
 				this.PauseTranscription()
@@ -591,14 +612,14 @@ class Dandy {
 		}
 	}
 
-	static StopTranscription() {
+	StopTranscription() {
 		this._StopTranscription(true)
 	}
 
-	static CancelTranscription() {
+	CancelTranscription() {
 		this._StopTranscription(false)
 	}
-	static ToggleTranscription() {
+	ToggleTranscription() {
 		while (this.IsStoppingOrStarting) {
 			Sleep 25
 		}
@@ -611,8 +632,9 @@ class Dandy {
 }
 
 class DandyHook {
-	__New() {
+	__New(dandy) {
 		; L0 disables collection of text
+		this.Dandy := dandy
 		this.InputHookObj := InputHook("L0")
 		onCharFunc := (hookObj, character) => this.OnChar(hookObj, character)
 		this.InputHookObj.OnChar := onCharFunc
@@ -630,19 +652,29 @@ class DandyHook {
 
 	OnChar(hookObj, character) {
 		if (character = "`r" || character = "`n") {
-			Dandy.StopTranscription()
+			this.Dandy.StopTranscription()
 		} else if (character = Chr(0x1b)) {
-			Dandy.CancelTranscription()
+			this.Dandy.CancelTranscription()
 		} else {
-			Dandy.CharacterAction(character)
+			this.Dandy.CharacterAction(character)
 		}
 	}
 }
 
 SetCapsLockState "AlwaysOff"
 
+oDandy := Dandy()
+
 CapsLock & Space:: {
-	Dandy.ToggleTranscription()
+	global oDandy
+	oDandy.ToggleTranscription()
+}
+
+CapsLock & g:: {
+	master_volume := SoundGetVolume()
+	new_volume := master_volume / 4
+	MsgBox "Master volume is " master_volume " percent. New volume will be " new_volume
+	SoundSetVolume new_volume
 }
 
 CapsLock:: {
