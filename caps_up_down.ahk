@@ -1,29 +1,6 @@
 #Requires AutoHotkey v2 64-bit
 #SingleInstance Force
 
-SetCapsLockState "AlwaysOff"
-
-CapsLock:: {
-
-}
-; Remap CapsLock+J → Down, CapsLock+K → Up
-CapsLock & j:: Send("{Down}")
-CapsLock & k:: Send("{Up}")
-
-; Shift+CapsLock → toggle CapsLock (normal CapsLock behavior)
-;+CapsLock::SetCapsLockState(!GetKeyState("CapsLock", "T"))
-+CapsLock:: {
-
-}
-
-^CapsLock:: {
-
-}
-
-^+!CapsLock:: {
-	SetCapsLockState(!GetKeyState("CapsLock", "T"))
-}
-
 StrEq(stringA, stringB) {
 	return StrCompare(stringA, stringB, true) = 0
 }
@@ -123,6 +100,24 @@ class FormatUtils {
 	}
 }
 
+class PunctuationChars {
+	static EndPunctuationCharacters := ".?!"
+	static NonEndPunctuationCharacters := ",:"
+
+	static IsEndPunctuationChar(character) {
+		return InStr(this.EndPunctuationCharacters, character)
+	}
+
+	static IsNonEndPunctuationChar(character) {
+		return InStr(this.NonEndPunctuationCharacters, character)
+	}
+
+	static IsPunctuationChar(character) {
+		return this.IsEndPunctuationChar(character) || this.IsNonEndPunctuationChar(character)
+	}
+}
+
+
 class StringUtils {
 
 	static Words(str) {
@@ -149,18 +144,6 @@ class StringUtils {
 			}
 		}
 		return result
-	}
-
-	static IsEndPunctuationChar(character) {
-		return character = '.' || character = '?' || character = '!'
-	}
-
-	static IsNonEndPunctuationChar(character) {
-		return character = ',' || character = ':'
-	}
-
-	static IsPunctuationChar(character) {
-		return this.IsNonEndPunctuationChar(character) || this.IsEndPunctuationChar(character)
 	}
 
 	static FirstWord(str) {
@@ -199,7 +182,7 @@ class StringUtils {
 		lastChar := this.LastChar(str)
 		if (lastChar = mark) {
 			return str
-		} else if (this.IsPunctuationChar(lastChar)) {
+		} else if (PunctuationChars.IsPunctuationChar(lastChar)) {
 			return (this.ButLastChar(str) . mark)
 		} else {
 			return str . mark
@@ -213,7 +196,7 @@ class StringUtils {
 		if (StrEq(lastChar, mark)) {
 			;; If the last character is the same as the mark that we want to add, then we should remove it
 			return this.ButLastChar(str)
-		} else if (this.IsPunctuationChar(lastChar)) {
+		} else if (PunctuationChars.IsPunctuationChar(lastChar)) {
 			;; If the last character is a punctuation mark which is not the same as that mark that we want to add, then we replace the last punctuation mark with the mark.
 			return this.ButLastChar(str) . mark
 		} else {
@@ -244,13 +227,56 @@ class StringUtils {
 }
 
 class SentenceState {
-	static TranscriptionSentenceEnded := true
+	static SentenceEnded := true
 
-	;; This method will do things based on not just TranscriptionSentenceEnded,
-	;; but also other variables that we define inside this class which will be
-	;; based on punctuation characters being typed in.
-	static GetSentenceHasEnded() {
-		return this.TranscriptionSentenceEnded
+	static GetSentenceEnded() {
+		return this.SentenceEnded
+	}
+
+	static SetSentenceEnded(ended) {
+		this.SentenceEnded := ended
+	}
+}
+
+class OutsidePunctuationHandler {
+	static Bound := Array()
+	static IsTesting := false
+
+	static Bind() {
+		for _, c in StrSplit(PunctuationChars.EndPunctuationCharacters) {
+			Hotkey ("~" . c), this.OnEndPunctuationCharacter.Bind(this), "Off"
+			this.Bound.Push(("~" . c))
+		}
+
+		for _, c in StrSplit(PunctuationChars.NonEndPunctuationCharacters) {
+			Hotkey ("~" . c), this.OnNonEndPunctuationCharacter.Bind(this), "Off"
+			this.Bound.Push(("~" . c))
+		}
+	}
+
+	static _SetHotKeysOption(opt) {
+		for bound in this.Bound {
+			Hotkey bound, , opt
+		}
+	}
+
+	static On() {
+		this._SetHotKeysOption("On")
+	}
+
+	static Off() {
+		this._SetHotKeysOption("Off")
+	}
+
+	static OnEndPunctuationCharacter(ThisHotkey) {
+		if this.IsTesting && ThisHotkey = "~!" {
+			MsgBox ("TESTING: " . ThisHotkey)
+		}
+		SentenceState.SetSentenceEnded(true)
+	}
+
+	static OnNonEndPunctuationCharacter(ThisHotkey) {
+		SentenceState.SetSentenceEnded(false)
 	}
 }
 
@@ -295,7 +321,7 @@ class TranscribedText {
 		if this.Any() {
 			lastItem := this.Items[this.Items.Length]
 			lastChar := StringUtils.LastChar(lastItem)
-			return StringUtils.IsEndPunctuationChar(lastChar)
+			return PunctuationChars.IsEndPunctuationChar(lastChar)
 		}
 
 		return true
@@ -476,7 +502,7 @@ class Dandy {
 		if (this.IsRecording) {
 			try {
 				handyResult := this.EndHandyTranscription()
-				this.CurrentlyTranscribedText.AddIfNotEmpty(handyResult, SentenceState.GetSentenceHasEnded())
+				this.CurrentlyTranscribedText.AddIfNotEmpty(handyResult, SentenceState.GetSentenceEnded())
 			} finally {
 				this.Recording_Paused_Formatting_StoppingStarting(false, true, false, false)
 			}
@@ -493,10 +519,6 @@ class Dandy {
 		}
 	}
 
-	static IsPunctuationChar(character) {
-		return StringUtils.IsPunctuationChar(character)
-	}
-
 	static IsPostPauseActionChar(character) {
 		return StrEq(character, "u")
 	}
@@ -510,14 +532,14 @@ class Dandy {
 			try {
 				if (this.IsRecording) {
 					handyResult := this.EndHandyTranscription()
-					this.CurrentlyTranscribedText.AddIfNotEmpty(handyResult, SentenceState.GetSentenceHasEnded())
+					this.CurrentlyTranscribedText.AddIfNotEmpty(handyResult, SentenceState.GetSentenceEnded())
 				}
 
 				if (copyToClipboard && this.CurrentlyTranscribedText.Any()) {
 					text := this.CurrentlyTranscribedText.GetText()
 					CB.WaitSet(text)
 					Send "^v"
-					SentenceState.TranscriptionSentenceEnded := this.CurrentlyTranscribedText.LastEnds()
+					SentenceState.SetSentenceEnded(this.CurrentlyTranscribedText.LastEnds())
 				}
 			} finally {
 				this.Hook.Stop()
@@ -539,7 +561,7 @@ class Dandy {
 			} else if (this.IsPaused) {
 				this.ResumeTranscription()
 			}
-		} else if (this.IsPunctuationChar(character)) {
+		} else if (PunctuationChars.IsPunctuationChar(character)) {
 			; if you are currently recording. Pause it.
 			wasPaused := false
 			if (this.IsRecording) {
@@ -598,10 +620,12 @@ class DandyHook {
 
 	Start() {
 		this.InputHookObj.Start()
+		OutsidePunctuationHandler.Off()
 	}
 
 	Stop() {
 		this.InputHookObj.Stop()
+		OutsidePunctuationHandler.On()
 	}
 
 	OnChar(hookObj, character) {
@@ -615,6 +639,31 @@ class DandyHook {
 	}
 }
 
+SetCapsLockState "AlwaysOff"
+
 CapsLock & Space:: {
 	Dandy.ToggleTranscription()
 }
+
+CapsLock:: {
+
+}
+
+; Remap CapsLock+J → Down, CapsLock+K → Up
+CapsLock & j:: Send("{Down}")
+CapsLock & k:: Send("{Up}")
+
++CapsLock:: {
+
+}
+
+^CapsLock:: {
+
+}
+
+^+!CapsLock:: {
+	SetCapsLockState(!GetKeyState("CapsLock", "T"))
+}
+
+OutsidePunctuationHandler.Bind()
+OutsidePunctuationHandler.On()
